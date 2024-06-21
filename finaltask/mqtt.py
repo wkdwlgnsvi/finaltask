@@ -1,52 +1,54 @@
-import RPi.GPIO as GPIO
-from time import sleep
 import board
 import neopixel
+from gpiozero import Button
 import paho.mqtt.client as mqtt
+import json
 
-# GPIO setup
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-BUTTON = 24
-GPIO.setup(BUTTON, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-
-# NeoPixel setup
+# GPIO 및 LED 설정
 pixel_pin = board.D10
-num_pixels = 4
-pixels = neopixel.NeoPixel(pixel_pin, num_pixels, brightness=0.2, auto_write=False, pixel_order=neopixel.GRB)
+button_pin = 24
 
-# MQTT setup
-mqtt_broker = "broker.emqx.io"
-mqtt_port = 1883
-client_id = "mqttx_39c0fd3d"
-mqtt_topic = "finaltask/"
+NUM_PIXELS = 4
+pixels = neopixel.NeoPixel(pixel_pin, NUM_PIXELS, brightness=0.2, auto_write=False, pixel_order=neopixel.GRB)
+
+# MQTT 설정
+MQTT_BROKER = "mqtt-dashboard.com"
+MQTT_PORT = 1883
+MQTT_KEEPALIVE_INTERVAL = 60
+MQTT_TOPIC = "button_press"
 
 def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        print("Connected successfully to MQTT broker")
-    else:
-        print(f"Failed to connect, return code {rc}")
+    print(f"Connected with result code {rc}")
 
-client = mqtt.Client(client_id=client_id)
+client = mqtt.Client()
 client.on_connect = on_connect
-client.connect(mqtt_broker, mqtt_port, 60)
+client.connect(MQTT_BROKER, MQTT_PORT, MQTT_KEEPALIVE_INTERVAL)
+client.loop_start()
+
+def button_pressed():
+    print("Button pressed!")
+    pixels.fill((0, 0, 255))  # 파란색 LED
+    pixels.show()
+
+    # MQTT 메시지 전송
+    message = {"": "pressed"}
+    client.publish(MQTT_TOPIC, json.dumps(message))
 
 try:
-    client.loop_start()
+    button = Button(button_pin, pull_up=False)
+    button.when_pressed = button_pressed
+    print("Press the button to light up the LED and send MQTT signal...")
+
     while True:
-        if GPIO.input(BUTTON) == GPIO.HIGH:  # 버튼이 눌렸을 때
-            pixels.fill((255, 0, 0))  # LED 모듈에 빨간색 불 켜기
-            pixels.show()
-            print("You pressed the button")
-            client.publish(mqtt_topic, "Button pressed")
-        else:
-            pixels.fill((0, 0, 0))  # 버튼이 눌리지 않았을 때 LED 모듈에 불 끄기
-            pixels.show()
-        sleep(0.1)
+        # Keep the program running
+        pass
+
 except KeyboardInterrupt:
-    print("I'm done!")
+    print("Program terminated by user.")
+
 finally:
-    GPIO.cleanup()
+    pixels.fill((0, 0, 0))  # LEDs off
+    pixels.show()
     client.loop_stop()
     client.disconnect()
 
